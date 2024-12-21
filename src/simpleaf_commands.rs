@@ -259,7 +259,7 @@ pub struct MapQuantOpts {
 #[command(group(
         ArgGroup::new("reftype")
         .required(true)
-        .args(["fasta", "ref_seq"])
+        .args(["fasta", "ref_seq", "probe_csv", "feature_csv"])
 ))]
 pub struct IndexOpts {
     /// specify whether an expanded reference, spliced+intronic (or splici) or spliced+unspliced (or spliceu), should be built
@@ -439,6 +439,30 @@ pub struct IndexOpts {
         display_order = 2
     )]
     pub sparse: bool,
+
+    /// path to a well-format CSV file containing a probe list to build the index. 
+    /// The CSV file must follow 10X Probe set reference CSV file's naming conventions. 
+    /// Only the `gene_id`, `probe_seq`, and `probe_sequence` columns are required. If a `included` column is present, all rows with the value `FALSE` will be excluded. If a `region` column is present, USA mode will be enabled to process spliced and unspliced reads separately.
+    /// https://www.10xgenomics.com/support/cytassist-spatial-gene-expression/documentation/steps/probe-sets/visium-ffpe-probe-sets-files 
+    #[arg( 
+        long, 
+        help_heading = "Direct Reference Options", 
+        conflicts_with_all = ["dedup", "rlen", "gtf", "fasta", "ref_seq", "feature_csv"],
+        display_order = 7
+    )] 
+    pub probe_csv: Option<PathBuf>,
+
+    /// path to a well-format CSV file containing a list of feature references to use for the index. 
+    /// The CSV file must follow 10X Feature Reference CSV file's naming conventions. 
+    /// Only the `id` and `sequence` columns are processed.
+    /// https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/inputs/cr-feature-ref-csv 
+    #[arg( 
+        long, 
+        help_heading = "Direct Reference Options", 
+        conflicts_with_all = ["dedup", "unspliced", "spliced", "rlen", "gtf", "fasta", "ref_seq", "probe_csv"],
+        display_order = 27
+    )] 
+    pub feature_csv: Option<PathBuf>,
 }
 
 /// Remove a chemistry from the chemistry registry

@@ -1,3 +1,4 @@
+use crate::utils::af_utils::create_dir_if_absent;
 use crate::utils::prog_utils;
 use crate::utils::prog_utils::{CommandVerbosityLevel, ReqProgs};
 
@@ -38,11 +39,6 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
     let rp: ReqProgs = serde_json::from_value(v["prog_info"].clone())?;
 
     rp.issue_recommended_version_messages();
-    // we are building a custom spliced+intronic reference
-    // make sure that a read length is available / was provided.
-    // if fasta.is_some() && matches!(ref_type, ReferenceType::SplicedIntronic) && rlen.is_none() {
-    //     bail!(format!("A spliced+intronic reference was requested, but no read length argument (--rlen) was provided."));
-    // }
 
     let info_file = output.join("index_info.json");
     let mut index_info = json!({
@@ -57,7 +53,7 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
         }
     });
 
-    run_fun!(mkdir -p $output)?;
+    create_dir_if_absent(&output)?;
 
     // wow, the compiler is smart enough to
     // figure out that this one need not be
@@ -70,8 +66,13 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
     let mut roers_duration = None;
     let mut roers_aug_ref_opt = None;
 
+    let outref = output.join("ref");
+    
     // if we are generating a splici reference
     if let (Some(fasta), Some(gtf)) = (opts.fasta, opts.gtf) {
+        // we first create the directory
+        create_dir_if_absent(&outref)?;
+
         let input_files = vec![fasta.clone(), gtf.clone()];
 
         // the "transcript" (spliced transcriptome) is currently implicit
@@ -86,9 +87,6 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
             ReferenceType::SplicedIntronic => Some(vec![roers::AugType::Intronic]),
             ReferenceType::SplicedUnspliced => Some(vec![roers::AugType::GeneBody]),
         };
-
-        let outref = output.join("ref");
-        run_fun!(mkdir -p $outref)?;
 
         let roers_opts = roers::AugRefOpts {
             // The path to a genome fasta file.
@@ -140,20 +138,45 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
 
         reference_sequence = Some(ref_file);
     } else {
-        // we are running on a set of references directly
+        // Here we have three mutual exclusive cases
+        // 1. we are running on a set of references directly
+        // 2. we have a probe CSV file,
+        // 3. we have a feature CSV file,
 
-        // in this path (due to the argument parser requiring
-        // either --fasta or --ref-seq, ref-seq should be safe to
-        // unwrap).
-        index_info["args"]["ref-seq"] = json!(opts.ref_seq.clone().unwrap());
+        // Let's start with the simple case
+        if let Some(ref_seq) = opts.ref_seq {
+            // we first create the directory
+            create_dir_if_absent(&outref)?;
 
-        std::fs::write(
-            &info_file,
-            serde_json::to_string_pretty(&index_info).unwrap(),
-        )
-        .with_context(|| format!("could not write {}", info_file.display()))?;
+            // if we are using a reference sequence directly
+            index_info["args"]["ref-seq"] = json!(&ref_seq);
+        
+            std::fs::write(
+                &info_file,
+                serde_json::to_string_pretty(&index_info).unwrap(),
+            )
+            .with_context(|| format!("could not write {}", info_file.display()))?;
 
-        reference_sequence = opts.ref_seq;
+            reference_sequence = Some(ref_seq);
+        } else if let Some(probe_csv) = opts.probe_csv {
+            // we first create the directory
+            create_dir_if_absent(&outref)?;
+
+            // we create a fasta file and use that as the reference_sequence
+
+        } else {
+            // ref_seq is None, probe_csv is None, and feature_csv is None
+            index_info["args"]["ref-seq"] = json!(opts.ref_seq.clone().unwrap());
+
+            std::fs::write(
+                &info_file,
+                serde_json::to_string_pretty(&index_info).unwrap(),
+            )
+            .with_context(|| format!("could not write {}", info_file.display()))?;
+    
+            reference_sequence = opts.ref_seq;
+        }
+
     }
 
     let ref_seq = reference_sequence.with_context(||
