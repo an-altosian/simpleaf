@@ -11,7 +11,7 @@ use crate::core::{context, exec, index_meta};
 use crate::simpleaf_commands::MultiplexQuantOpts;
 use crate::utils::af_utils::IndexType;
 use crate::utils::chem_utils::{CustomChemistry, CustomChemistryMap};
-use crate::utils::constants::CHEMISTRIES_PATH;
+use crate::utils::constants::{CHEMISTRIES_PATH, CHEMISTRIES_URL};
 use crate::utils::probe_utils;
 use crate::utils::prog_parsing_utils;
 use crate::utils::prog_utils;
@@ -247,10 +247,7 @@ pub fn multiplex_map_and_quant(af_home: &Path, opts: MultiplexQuantOpts) -> anyh
     let chem: Option<CustomChemistry> = if let Some(ref chem_name) = opts.chemistry {
         let chem_path = af_home.join(CHEMISTRIES_PATH);
         if !chem_path.exists() {
-            bail!(
-                "Chemistry registry not found at {}. Run `simpleaf chemistry refresh` first.",
-                chem_path.display(),
-            );
+            prog_utils::download_to_file(CHEMISTRIES_URL, &chem_path)?;
         }
         let chem_file = std::fs::File::open(&chem_path)?;
         let chem_map: CustomChemistryMap = serde_json::from_reader(chem_file)
