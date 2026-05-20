@@ -119,13 +119,17 @@ pub fn download_to_file<T: AsRef<str>>(url: T, file_path: &Path) -> Result<()> {
                 let mut ofile = std::io::BufWriter::new(f);
                 std::io::copy(&mut req, &mut ofile)?;
             } else {
-                let c = response
-                    .status()
-                    .canonical_reason()
-                    .unwrap_or("UNKNOWN FAILURE");
-                warn!(
-                    "Obtained status code {} from final url {}",
-                    c,
+                // A non-success HTTP status (404, 403, rate-limit, 5xx, ...)
+                // must be a hard error: otherwise this function returns Ok(())
+                // without ever creating `file_path`, and callers that open it
+                // next fail with a cryptic "No such file or directory".
+                let status = response.status();
+                let reason = status.canonical_reason().unwrap_or("UNKNOWN FAILURE");
+                bail!(
+                    "could not download {} — server returned status {} ({}) from final url {}",
+                    url,
+                    status.as_u16(),
+                    reason,
                     response.get_uri()
                 );
             }
