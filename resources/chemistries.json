@@ -181,7 +181,8 @@
     },
     "sample_bc_list": {
       "plist_name": "5e7ef950ad43c35525e8d923423a7bb1abdce78ca2a8fe4ef9a2d69c5f22830b",
-      "remote_url": "https://umd.box.com/shared/static/4ogdlgooo1onjkrny9pfbyz4gdt5vktl"
+      "remote_url": "https://umd.box.com/shared/static/4ogdlgooo1onjkrny9pfbyz4gdt5vktl",
+      "sample_bc_ori": "reverse"
     },
     "probe_sets": {
       "human": {
