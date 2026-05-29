@@ -13,19 +13,19 @@ The ``multiplex-quant`` command runs the end-to-end ``simpleaf`` pipeline for 10
 - multi-barcode permit-list generation with ``alevin-fry generate-permit-list``
 - ``alevin-fry collate`` and ``alevin-fry quant``
 
-At present, ``multiplex-quant`` expects a registered Flex chemistry such as ``10x-flexv1-gex-3p`` or ``10x-flexv2-gex-3p`` and requires ``piscem`` plus ``alevin-fry`` to be configured with :doc:`/set-paths`.
+``multiplex-quant`` typically runs against a registered Flex chemistry such as ``10x-flexv1-gex-3p`` or ``10x-flexv2-gex-3p``, in which case the geometry, cell BC whitelist, sample BC list, and orientations are auto-resolved from the preset. For chemistries not in the registry (or cycle-plan variants such as 10x Flex Configuration B), the preset can be replaced with manual overrides — at minimum ``--geometry`` and ``--cell-bc-list``, with optional ``--probe-set``, ``--sample-bc-list``, ``--expected-ori``, and ``--sample-bc-ori`` as needed. ``piscem`` and ``alevin-fry`` must be configured with :doc:`/set-paths`.
 
 Overview
 --------
 
 The command needs:
 
-1. a Flex chemistry name via ``--chemistry``
-2. an organism via ``--organism`` for automatic probe-set selection
-3. paired-end reads via ``--reads1`` and ``--reads2``
-4. an output directory via ``--output``
+1. paired-end reads via ``--reads1`` and ``--reads2``
+2. an output directory via ``--output``
+3. either a registered chemistry name via ``--chemistry``, or a manual ``--geometry`` string plus ``--cell-bc-list`` for chemistries not in the registry
+4. an organism via ``--organism`` when using automatic probe-set selection (i.e. when ``--probe-set`` is not provided)
 
-If the chemistry registry contains the needed metadata, ``simpleaf`` can automatically download and cache the probe set, the cell barcode whitelist, and the sample barcode list. If you already have local resources, you can override these defaults with ``--index``, ``--probe-set``, or ``--sample-bc-list``.
+If the chemistry registry contains the needed metadata, ``simpleaf`` can automatically download and cache the probe set, the cell barcode whitelist, and the sample barcode list. If you already have local resources, you can override these defaults with ``--index``, ``--probe-set``, ``--cell-bc-list``, or ``--sample-bc-list``.
 
 The default output is the standard Matrix Market directory under ``af_quant/alevin``. If you pass ``--anndata-out``, ``simpleaf`` will additionally write an AnnData ``.h5ad`` file at ``af_quant/alevin/quants.h5ad``.
 
@@ -48,6 +48,7 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
 
     Options:
       -c, --chemistry <CHEMISTRY>    Chemistry name (e.g. 10x-flexv1-gex-3p). Provides defaults for geometry, cell BC whitelist, sample BC list, and probe set. All can be overridden individually. If omitted, --geometry and --cell-bc-list are required
+      -g, --geometry <GEOMETRY>      Override the read geometry string (e.g. '1{b[16]u[12]x[0-3]hamming(f[TTGCTAGGACCG],1)s[10]x:}2{r:}')
           --organism <ORGANISM>      Target organism for automatic probe set selection [possible values: human, mouse]
           --cell-bc-list <CELL_BC_LIST>
                                       Path to cell barcode whitelist (one barcode per line, overrides chemistry default)
@@ -57,7 +58,6 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
                                       Sample barcode orientation override: ``fw`` (whitelist matches read as-is) or ``rev`` (reverse-complement the whitelist before lookup). Overrides the chemistry preset's ``sample_bc_ori`` when set; otherwise the preset value (if any) is used. Mirrors the ``--expected-ori`` shorthand [possible values: fw, rev]
       -o, --output <OUTPUT>          Path to output directory
       -t, --threads <THREADS>        Number of threads to use [default: 16]
-      -r, --resolution <RESOLUTION>  UMI resolution mode [default: cr-like] [possible values: cr-like, cr-like-em, parsimony, parsimony-em, parsimony-gene, parsimony-gene-em]
       -h, --help                     Print help
       -V, --version                  Print version
 
@@ -67,21 +67,28 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
       -2, --reads2 <READS2>  Comma-separated list of R2 FASTQ files
 
     Probe Set Options:
-          --probe-set <PROBE_SET>            Path to probe set CSV or FASTA (overrides auto-download)
-          --sample-bc-list <SAMPLE_BC_LIST>  Path to sample/probe barcode file with rotation mapping
-          --kmer-length <KMER_LENGTH>        k-mer length for probe index building [default: 23]
+          --probe-set <PROBE_SET>      Path to probe set CSV or FASTA (overrides auto-download)
+          --kmer-length <KMER_LENGTH>  k-mer length for probe index building [default: 23]
 
     Reference Options:
-      -m, --t2g-map <T2G_MAP>  Path to a transcript-to-gene map file
-          --usa                Resolve expression into separate spliced and unspliced counts. This requires splicing-aware probe annotations: either a probe CSV with a ``region`` column containing ``spliced`` / ``unspliced`` values, or a pre-built index with an adjacent 3-column t2g file
+      -m, --t2g-map <T2G_MAP>            Path to a transcript-to-gene map file
+          --usa                          Resolve expression into separate spliced and unspliced counts. This requires splicing-aware probe annotations: either a probe CSV with a ``region`` column containing ``spliced`` / ``unspliced`` values, or a pre-built index with an adjacent 3-column t2g file
+          --sample-bc-list <SAMPLE_BC_LIST>
+                                          Path to sample/probe barcode file with rotation mapping. 3-column TSV: observed, canonical, sample_name. Overrides the chemistry preset's auto-downloaded sample BC list.
 
     Piscem Mapping Options:
           --skipping-strategy <SKIPPING_STRATEGY>  The skipping strategy to use for k-mer collection [default: permissive] [possible values: permissive, strict]
           --struct-constraints                     If piscem >= 0.7.0, enable structural constraints
-          --max-ec-card <MAX_EC_CARD>             Maximum cardinality equivalence class to examine [default: 4096]
+          --max-ec-card <MAX_EC_CARD>              Maximum cardinality equivalence class to examine [default: 4096]
+          --dict <DICT>                            Piscem dictionary backend to use at map time: ``auto`` (default, honors the index's embedded choice), ``sshash``, or ``tiny`` [default: auto] [possible values: auto, sshash, tiny]
+
+    Quantification Options:
+      -r, --resolution <RESOLUTION>  UMI resolution mode [default: cr-like] [possible values: cr-like, cr-like-em, parsimony, parsimony-em, parsimony-gene, parsimony-gene-em]
 
     Permit List Options:
-          --min-reads <MIN_READS>  Minimum read count threshold for unfiltered permit list [default: 10]
+          --sample-correction-mode <SAMPLE_CORRECTION_MODE>
+                                       Sample barcode correction mode [default: exact] [possible values: exact, 1-edit]
+          --min-reads <MIN_READS>      Minimum read count threshold for unfiltered permit list [default: 10]
 
     Output Options:
           --anndata-out  Generate an anndata (h5ad format) count matrix from the standard (matrix-market format) output
