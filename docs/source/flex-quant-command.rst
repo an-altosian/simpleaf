@@ -55,7 +55,7 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
           --expected-ori <EXPECTED_ORI>
                                       Expected read orientation: fw, rc, or both [default: both]
           --sample-bc-ori <SAMPLE_BC_ORI>
-                                      Sample barcode orientation override: ``fw`` (whitelist matches read as-is) or ``rev`` (reverse-complement the whitelist before lookup). Overrides the chemistry preset's ``sample_bc_ori`` when set; otherwise the preset value (if any) is used. Mirrors the ``--expected-ori`` shorthand [possible values: fw, rev]
+                                      Sample barcode orientation override: ``forward`` (whitelist matches read as-is) or ``reverse`` (reverse-complement the whitelist before lookup). Overrides the chemistry preset's ``sample_bc_ori`` when set; otherwise the preset value (if any) is used. Vocabulary matches the chemistry preset JSON and ``alevin-fry --sample-bc-ori`` [possible values: forward, reverse]
       -o, --output <OUTPUT>          Path to output directory
       -t, --threads <THREADS>        Number of threads to use [default: 16]
       -h, --help                     Print help
@@ -103,7 +103,7 @@ Fields stored in a chemistry preset:
 - ``geometry`` — piscem geometry string describing R1/R2 layout (cell BC, UMI, sample BC, biological-read offsets). CLI override: ``--geometry``.
 - ``expected_ori`` — orientation of the biological read relative to the reference (``fw`` / ``rc`` / ``both``). CLI override: ``--expected-ori``.
 - ``plist_name`` and ``remote_url`` — cached filename and download URL for the cell barcode whitelist. CLI override: ``--cell-bc-list`` (pass a local path; the URL itself is an internal detail).
-- ``sample_bc_list`` *(Flex only)* — a nested record with ``plist_name``, ``remote_url``, and ``sample_bc_ori``. CLI overrides: ``--sample-bc-list`` for the 3-column TSV path, and ``--sample-bc-ori`` (``fw`` / ``rev``) for the orientation.
+- ``sample_bc_list`` *(Flex only)* — a nested record with ``plist_name``, ``remote_url``, and ``sample_bc_ori``. CLI overrides: ``--sample-bc-list`` for the 3-column TSV path, and ``--sample-bc-ori`` (``forward`` / ``reverse``) for the orientation.
 - ``probe_sets`` *(Flex only)* — an organism-keyed dictionary, e.g. ``{ "human": {...}, "mouse": {...} }``. Each entry stores a probe-CSV download URL plus probe-set metadata. CLI overrides: ``--organism`` selects which entry is consulted, and ``--probe-set`` bypasses the lookup entirely by supplying a local CSV/FASTA.
 - ``version`` and ``meta`` — internal preset versioning and free-form metadata. Not exposed at the CLI; they do not affect pipeline behavior.
 
@@ -141,7 +141,7 @@ Example: run a chemistry that is not yet in the registry (e.g. a 10x Flex v2 Con
    $ simpleaf multiplex-quant \
        --geometry '1{b[16]u[12]x:}2{r[50]f[CCCATATAAGAAAACCTGAATACGCGGTT]s[10]x:}' \
        --expected-ori fw \
-       --sample-bc-ori fw \
+       --sample-bc-ori forward \
        --cell-bc-list /path/to/cell_bc_whitelist.txt \
        --sample-bc-list /path/to/sample_bc_rotation.tsv \
        --probe-set /path/to/probe_set.csv \
@@ -167,7 +167,7 @@ Resource resolution
 - Sample barcode list:
   This is resolved from ``--sample-bc-list`` if provided, otherwise from the selected chemistry's registry metadata.
 - Sample barcode orientation:
-  By default, ``simpleaf`` forwards the chemistry preset's declared ``sample_bc_ori`` (when present) to ``alevin-fry``. Pass ``--sample-bc-ori {fw,rev}`` to override the preset value at the CLI level. This is useful for cycle-plan variants where the sample BC is read from the opposite strand vs the canonical preset — for example, 10x Flex Configuration B (R1=28 / R2=90) uses ``--sample-bc-ori fw`` whereas the default 10x Flex v2 Configuration A preset declares ``reverse``. The CLI value ``fw`` is forwarded to ``alevin-fry`` as ``forward`` and ``rev`` as ``reverse``; if nothing is set on the CLI and the preset is silent, ``alevin-fry`` defaults to ``forward``.
+  By default, ``simpleaf`` forwards the chemistry preset's declared ``sample_bc_ori`` (when present) to ``alevin-fry``. Pass ``--sample-bc-ori {forward,reverse}`` to override the preset value at the CLI level. This is useful for cycle-plan variants where the sample BC is read from the opposite strand vs the canonical preset — for example, 10x Flex Configuration B (R1=28 / R2=90) uses ``--sample-bc-ori forward`` whereas the default 10x Flex v2 Configuration A preset declares ``reverse``. The CLI value is forwarded verbatim to ``alevin-fry --sample-bc-ori``; if nothing is set on the CLI and the preset is silent, ``alevin-fry`` defaults to ``forward``.
 
 USA-mode requirements
 ---------------------
@@ -255,7 +255,7 @@ Override the sample barcode orientation for a cycle-plan variant (e.g. 10x Flex 
        --chemistry 10x-flexv2-gex-3p \
        --organism human \
        --geometry '1{b[16]u[12]x:}2{r[50]f[CCCATATAAGAAAACCTGAATACGCGGTT]s[10]x:}' \
-       --sample-bc-ori fw \
+       --sample-bc-ori forward \
        --reads1 sample_R1.fastq.gz \
        --reads2 sample_R2.fastq.gz \
        --output flex_out
