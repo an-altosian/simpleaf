@@ -93,6 +93,28 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
     Output Options:
           --anndata-out  Generate an anndata (h5ad format) count matrix from the standard (matrix-market format) output
 
+Chemistry preset structure
+--------------------------
+
+A registered chemistry name (e.g. ``10x-flexv1-gex-3p``) selects a JSON entry in simpleaf's chemistry registry (``chemistries.json``) that bundles every protocol-level parameter the pipeline needs. Each behavioral field has a corresponding CLI override; only a small set of internal metadata fields are not user-controllable.
+
+Fields stored in a chemistry preset:
+
+- ``geometry`` — piscem geometry string describing R1/R2 layout (cell BC, UMI, sample BC, biological-read offsets). CLI override: ``--geometry``.
+- ``expected_ori`` — orientation of the biological read relative to the reference (``fw`` / ``rc`` / ``both``). CLI override: ``--expected-ori``.
+- ``plist_name`` and ``remote_url`` — cached filename and download URL for the cell barcode whitelist. CLI override: ``--cell-bc-list`` (pass a local path; the URL itself is an internal detail).
+- ``sample_bc_list`` *(Flex only)* — a nested record with ``plist_name``, ``remote_url``, and ``sample_bc_ori``. CLI overrides: ``--sample-bc-list`` for the 3-column TSV path, and ``--sample-bc-ori`` (``fw`` / ``rev``) for the orientation.
+- ``probe_sets`` *(Flex only)* — an organism-keyed dictionary, e.g. ``{ "human": {...}, "mouse": {...} }``. Each entry stores a probe-CSV download URL plus probe-set metadata. CLI overrides: ``--organism`` selects which entry is consulted, and ``--probe-set`` bypasses the lookup entirely by supplying a local CSV/FASTA.
+- ``version`` and ``meta`` — internal preset versioning and free-form metadata. Not exposed at the CLI; they do not affect pipeline behavior.
+
+How ``--chemistry`` and ``--organism`` together locate a Flex configuration:
+
+1. ``--chemistry`` resolves to a registered preset entry. That single lookup fixes the *protocol* parameters for the run: ``geometry``, ``expected_ori``, the cell barcode whitelist, the sample barcode list, and the sample barcode orientation. Any of these can be replaced individually with the corresponding CLI override flag listed above.
+2. For Flex presets the preset's ``probe_sets`` dict is keyed by organism. ``--organism`` (``human``, ``mouse``, …) selects which entry's probe CSV will be auto-downloaded. ``--probe-set`` supersedes the lookup, so when ``--probe-set`` is given ``--organism`` becomes optional.
+3. ``--chemistry`` itself can also be omitted. In that case you must supply ``--geometry`` and ``--cell-bc-list`` at the CLI (and, for sample-multiplexed runs, ``--sample-bc-list``, ``--sample-bc-ori``, and ``--probe-set`` as well), since there is no preset to draw defaults from.
+
+For non-Flex chemistries (presets without a ``probe_sets`` map), ``--organism`` is recorded in run metadata but is otherwise ignored.
+
 Resource resolution
 -------------------
 
