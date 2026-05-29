@@ -53,6 +53,8 @@ The relevant options (which you can obtain by running ``simpleaf multiplex-quant
                                       Path to cell barcode whitelist (one barcode per line, overrides chemistry default)
           --expected-ori <EXPECTED_ORI>
                                       Expected read orientation: fw, rc, or both [default: both]
+          --sample-bc-ori <SAMPLE_BC_ORI>
+                                      Sample barcode orientation override: ``fw`` (whitelist matches read as-is) or ``rev`` (reverse-complement the whitelist before lookup). Overrides the chemistry preset's ``sample_bc_ori`` when set; otherwise the preset value (if any) is used. Mirrors the ``--expected-ori`` shorthand [possible values: fw, rev]
       -o, --output <OUTPUT>          Path to output directory
       -t, --threads <THREADS>        Number of threads to use [default: 16]
       -r, --resolution <RESOLUTION>  UMI resolution mode [default: cr-like] [possible values: cr-like, cr-like-em, parsimony, parsimony-em, parsimony-gene, parsimony-gene-em]
@@ -99,6 +101,8 @@ Resource resolution
   This is resolved from the selected chemistry's permit-list metadata in the registry.
 - Sample barcode list:
   This is resolved from ``--sample-bc-list`` if provided, otherwise from the selected chemistry's registry metadata.
+- Sample barcode orientation:
+  By default, ``simpleaf`` forwards the chemistry preset's declared ``sample_bc_ori`` (when present) to ``alevin-fry``. Pass ``--sample-bc-ori {fw,rev}`` to override the preset value at the CLI level. This is useful for cycle-plan variants where the sample BC is read from the opposite strand vs the canonical preset — for example, 10x Flex Configuration B (R1=28 / R2=90) uses ``--sample-bc-ori fw`` whereas the default 10x Flex v2 Configuration A preset declares ``reverse``. The CLI value ``fw`` is forwarded to ``alevin-fry`` as ``forward`` and ``rev`` as ``reverse``; if nothing is set on the CLI and the preset is silent, ``alevin-fry`` defaults to ``forward``.
 
 USA-mode requirements
 ---------------------
@@ -174,6 +178,19 @@ Request USA-mode probe quantification:
        --organism human \
        --probe-set /path/to/probe_set.csv \
        --usa \
+       --reads1 sample_R1.fastq.gz \
+       --reads2 sample_R2.fastq.gz \
+       --output flex_out
+
+Override the sample barcode orientation for a cycle-plan variant (e.g. 10x Flex v2 Configuration B, R1=28 / R2=90):
+
+.. code-block:: console
+
+   $ simpleaf multiplex-quant \
+       --chemistry 10x-flexv2-gex-3p \
+       --organism human \
+       --geometry '1{b[16]u[12]x:}2{r[50]f[CCCATATAAGAAAACCTGAATACGCGGTT]s[10]x:}' \
+       --sample-bc-ori fw \
        --reads1 sample_R1.fastq.gz \
        --reads2 sample_R2.fastq.gz \
        --output flex_out
