@@ -573,6 +573,15 @@ pub struct MultiplexQuantOpts {
     #[arg(long, default_value = "both")]
     pub expected_ori: String,
 
+    /// Sample barcode orientation: `fw` (whitelist matches read as-is) or `rev`
+    /// (reverse-complement the whitelist before lookup). Overrides the chemistry
+    /// preset's `sample_bc_ori` when set. Useful for cycle-plan variants (e.g.
+    /// 10x Flex Configuration B) where the sample BC is read off the opposite
+    /// strand from the canonical preset. Shorthand mirrors `--expected-ori`.
+    #[arg(long,
+        value_parser = clap::builder::PossibleValuesParser::new(["fw", "rev"]))]
+    pub sample_bc_ori: Option<String>,
+
     /// Sample barcode correction mode
     #[arg(long, default_value = "exact",
         value_parser = clap::builder::PossibleValuesParser::new(["exact", "1-edit"]),
