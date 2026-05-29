@@ -115,6 +115,42 @@ How ``--chemistry`` and ``--organism`` together locate a Flex configuration:
 
 For non-Flex chemistries (presets without a ``probe_sets`` map), ``--organism`` is recorded in run metadata but is otherwise ignored.
 
+Running without ``--chemistry``
+-------------------------------
+
+``--chemistry`` can be omitted entirely when the protocol you want to run is not in the registry, or when you want full manual control over every resource. With no preset to draw defaults from, the pipeline requires you to supply every resource it would otherwise auto-resolve. simpleaf bails with an explicit error if any required input is missing.
+
+Required CLI flags when ``--chemistry`` is omitted:
+
+- ``--geometry`` — the piscem geometry string. Error: ``No geometry specified. Provide --geometry or --chemistry.``
+- ``--cell-bc-list`` — local path to the cell barcode whitelist (one barcode per line). Error: ``No cell barcode whitelist specified. Provide --cell-bc-list or --chemistry.``
+- ``--sample-bc-list`` — local path to the 3-column sample BC TSV (``observed<TAB>canonical<TAB>sample_name``). Error: ``Chemistry has no sample barcode list URL. Provide --sample-bc-list.``
+- ``--probe-set`` or ``--index`` — either a local probe-set CSV/FASTA or a pre-built piscem probe index. Without a preset, simpleaf cannot auto-download a probe set from a ``probe_sets`` dict. Error: ``No chemistry specified and no --probe-set or --index provided.``
+
+Optional CLI flags (defaults apply if unset):
+
+- ``--expected-ori`` — defaults to ``both``.
+- ``--sample-bc-ori`` — when unset, no ``--sample-bc-ori`` is forwarded to alevin-fry, so its own default (``forward``) takes effect.
+- ``--resolution`` — defaults to ``cr-like``.
+- ``--organism`` — irrelevant when ``--probe-set`` or ``--index`` is supplied (the preset's ``probe_sets`` lookup is skipped).
+
+Example: run a chemistry that is not yet in the registry (e.g. a 10x Flex v2 Configuration B variant) by supplying all resources manually:
+
+.. code-block:: console
+
+   $ simpleaf multiplex-quant \
+       --geometry '1{b[16]u[12]x:}2{r[50]f[CCCATATAAGAAAACCTGAATACGCGGTT]s[10]x:}' \
+       --expected-ori fw \
+       --sample-bc-ori fw \
+       --cell-bc-list /path/to/cell_bc_whitelist.txt \
+       --sample-bc-list /path/to/sample_bc_rotation.tsv \
+       --probe-set /path/to/probe_set.csv \
+       --reads1 sample_R1.fastq.gz \
+       --reads2 sample_R2.fastq.gz \
+       --output flex_out
+
+If your protocol becomes stable and reusable, consider proposing it as a chemistry preset upstream so future users can run it with just ``--chemistry``.
+
 Resource resolution
 -------------------
 
