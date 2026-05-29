@@ -404,21 +404,16 @@ pub fn multiplex_map_and_quant(af_home: &Path, opts: MultiplexQuantOpts) -> anyh
         .arg(format!("{}", opts.min_reads));
 
     // Forward the sample-barcode orientation to alevin-fry. Precedence:
-    //   1. user-supplied --sample-bc-ori CLI override (`fw`/`rev` shorthand,
-    //      mirroring --expected-ori; translated to alevin-fry's
-    //      `forward`/`reverse` vocabulary below).
-    //   2. the chemistry preset's declared sample_bc_ori string (passed as-is;
-    //      already `forward` / `reverse` in the JSON).
+    //   1. user-supplied --sample-bc-ori CLI override (`forward` / `reverse`,
+    //      matching alevin-fry's vocabulary and the preset JSON).
+    //   2. the chemistry preset's declared sample_bc_ori (e.g. 10x Flex v2
+    //      where the whitelist is the RC of what appears on the read).
     //   3. omit the flag (alevin-fry default).
-    let sbc_ori_override = match opts.sample_bc_ori.as_deref() {
-        Some("fw") => Some("forward"),
-        Some("rev") => Some("reverse"),
-        Some(_) => unreachable!("clap PossibleValuesParser restricts to fw/rev"),
-        None => chem
-            .as_ref()
+    let sbc_ori_override = opts.sample_bc_ori.as_deref().or_else(|| {
+        chem.as_ref()
             .and_then(|c| c.sample_bc_list.as_ref())
-            .and_then(|s| s.sample_bc_ori.as_deref()),
-    };
+            .and_then(|s| s.sample_bc_ori.as_deref())
+    });
     if let Some(ori) = sbc_ori_override {
         gpl_cmd.arg("--sample-bc-ori").arg(ori);
     }
