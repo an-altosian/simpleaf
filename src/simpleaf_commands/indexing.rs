@@ -7,7 +7,7 @@ use anyhow::{Context, anyhow, bail};
 use roers;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -90,7 +90,26 @@ fn write_index_log_stage(
 
 #[cfg(test)]
 mod tests {
-    use super::derive_kmer_and_minimizer;
+    use super::{derive_kmer_and_minimizer, insert_gene_name};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn insert_gene_name_dedups_and_detects_conflicts() {
+        let mut m = BTreeMap::new();
+        insert_gene_name(&mut m, "G1", "GeneOne").expect("first insert ok");
+        insert_gene_name(&mut m, "G1", "GeneOne").expect("identical re-insert ok");
+        insert_gene_name(&mut m, "G2", "GeneTwo").expect("distinct gene ok");
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get("G1").map(String::as_str), Some("GeneOne"));
+
+        let err = insert_gene_name(&mut m, "G1", "Different")
+            .expect_err("conflicting name for same gene_id should error");
+        assert!(
+            format!("{:#}", err).contains("inconsistent gene annotations"),
+            "unexpected error: {:#}",
+            err
+        );
+    }
 
     #[test]
     fn derive_kmer_and_minimizer_fails_for_short_reference() {
@@ -175,6 +194,17 @@ struct ProbeRow {
     probe_id: String,
     included: Option<Included>,
     region: Option<ProbeRegion>,
+    // optional gene symbol column (10x probe set v2 CSVs include `gene_name`;
+    // some panels name it `gene_symbol`). Used to emit a gene_id -> name map.
+    #[serde(default, alias = "gene_symbol")]
+    gene_name: Option<String>,
+}
+
+impl ProbeRow {
+    /// The gene symbol/name for this probe's gene, if the CSV provided one.
+    fn gene_name(&self) -> Option<&str> {
+        self.gene_name.as_deref()
+    }
 }
 
 impl CsvRow<'_> for ProbeRow {
@@ -265,6 +295,26 @@ impl std::fmt::Display for ProbeRegion {
     }
 }
 
+/// Record a `gene_id -> gene_name` association, erroring if a different name was
+/// already seen for the same `gene_id` (an internally inconsistent probe set).
+fn insert_gene_name(
+    map: &mut BTreeMap<String, String>,
+    gene_id: &str,
+    gene_name: &str,
+) -> anyhow::Result<()> {
+    if let Some(prev) = map.insert(gene_id.to_string(), gene_name.to_string())
+        && prev != gene_name
+    {
+        bail!(
+            "probe CSV contains inconsistent gene annotations for `{}`: saw both `{}` and `{}`.",
+            gene_id,
+            prev,
+            gene_name
+        );
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_csv_record(
     ref_id: &str,
@@ -275,7 +325,6 @@ fn parse_csv_record(
     has_region: bool,
     seq_id_hs: &mut HashSet<String>,
     ref_seq_writer: &mut BufWriter<File>,
-    // id_to_name_writer: &mut BufWriter<File>,
     t2g_writer: &mut BufWriter<File>,
 ) -> anyhow::Result<()> {
     if !include {
@@ -300,9 +349,6 @@ fn parse_csv_record(
     } else {
         writeln!(t2g_writer, "{}\t{}", seq_id, ref_id)?;
     };
-
-    // insert into gene id to name
-    // writeln!(id_to_name_writer, "{}\t{}", ref_id, ref_id)?;
 
     // insert into ref seq
     writeln!(ref_seq_writer, ">{}\n{}", seq_id, sequence)?;
@@ -453,7 +499,6 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
 
         // define file names
         let ref_seq_path = outref.join("ref.fa");
-        // let id_to_name_path = outref.join("gene_id_to_name.tsv");
         let t2g_path = if has_region {
             outref.join("t2g_3col.tsv")
         } else {
@@ -462,9 +507,11 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
 
         // define buffer writers
         let mut ref_seq_writer = BufWriter::new(File::create(&ref_seq_path)?);
-        // let mut id_to_name_writer = BufWriter::new(File::create(&id_to_name_path)?);
         let mut t2g_writer = BufWriter::new(File::create(&t2g_path)?);
         let mut msl = u32::MAX;
+        // collected gene_id -> gene_name for probe CSVs that carry a gene symbol column;
+        // written out as gene_id_to_name.tsv so downstream `quant` can surface gene names.
+        let mut gene_id_to_name_map: BTreeMap<String, String> = BTreeMap::new();
 
         match csv_reader {
             CsvReader::Feature(mut rdr) => {
@@ -482,7 +529,6 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
                         has_region,
                         &mut seq_id_hs,
                         &mut ref_seq_writer,
-                        // &mut id_to_name_writer,
                         &mut t2g_writer,
                     )?;
                 }
@@ -491,6 +537,15 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
                 // process the csv file
                 for row in rdr.deserialize() {
                     let record: ProbeRow = row?;
+
+                    // record gene_id -> gene_name for every probe that carries a name,
+                    // independent of the `included` flag: the mapping is a complete gene
+                    // annotation, written whenever the probe set provides gene symbols.
+                    if let Some(gene_name) =
+                        record.gene_name().map(str::trim).filter(|s| !s.is_empty())
+                    {
+                        insert_gene_name(&mut gene_id_to_name_map, record.ref_id(), gene_name)?;
+                    }
 
                     parse_csv_record(
                         record.ref_id(),
@@ -501,7 +556,6 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
                         has_region,
                         &mut seq_id_hs,
                         &mut ref_seq_writer,
-                        // &mut id_to_name_writer,
                         &mut t2g_writer,
                     )?;
                 }
@@ -509,12 +563,24 @@ pub fn build_ref_and_index(af_home_path: &Path, opts: IndexOpts) -> anyhow::Resu
         }
 
         index_info["t2g_file"] = json!(&t2g_path);
-        // index_info["gene_id_to_name"] = json!(&id_to_name_path);
+
+        // If the (probe) CSV carried gene symbols, emit a gene_id -> gene_name map.
+        // This parallels the GTF/roers path (above) and the multiplex-quant auto-build
+        // path, so a prebuilt probe index also lets `quant` surface gene names.
+        if !gene_id_to_name_map.is_empty() {
+            let id_to_name_path = outref.join("gene_id_to_name.tsv");
+            let mut id_to_name_writer = BufWriter::new(File::create(&id_to_name_path)?);
+            for (gene_id, gene_name) in &gene_id_to_name_map {
+                writeln!(id_to_name_writer, "{}\t{}", gene_id, gene_name)?;
+            }
+            id_to_name_writer.flush()?;
+            index_info["gene_id_to_name"] = json!(&id_to_name_path);
+            gene_id_to_name = Some(id_to_name_path);
+        }
 
         min_seq_len = Some(msl);
         reference_sequence = Some(ref_seq_path);
         t2g = Some(t2g_path);
-        // _gene_id_to_name = Some(id_to_name_path);
     }
 
     io::write_json_pretty(&info_file, &index_info)?;
