@@ -146,6 +146,15 @@ Quantification Options:
 
           Left unset, alevin-fry's own default applies.
 
+      --umi-edit-dist <N>
+          UMI edit distance (Hamming) for Cell Ranger-style UMI collapse, forwarded to `alevin-fry
+          quant --umi-edit-dist`.
+
+          Left unset (AUTO), edit-distance-1 UMI collapse defaults ON for the Cell Ranger-faithful
+          resolutions (`cr-like`, `cr-like-em`) — mimicking Cell Ranger's Hamming-1 UMI merging —
+          and OFF for every other resolution, where alevin-fry's own default stands. Pass `0` to opt
+          out of the CR-style collapse, or an explicit `N` to force that Hamming distance.
+
 Piscem Mapping Options:
       --skipping-strategy <SKIPPING_STRATEGY>
           The skipping strategy to use for k-mer collection

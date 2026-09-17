@@ -570,6 +570,9 @@ fn run_quant_stage(
             .arg("--small-thresh")
             .arg(small_thresh.to_string());
     }
+    // Cell Ranger-style UMI collapse: AUTO forwards `--umi-edit-dist 1` for
+    // cr-like/cr-like-em, nothing otherwise (see `resolve_umi_edit_dist`).
+    super::append_umi_edit_dist(&mut alevin_quant_cmd, &opts.resolution, opts.umi_edit_dist);
     let quant_cmd_string = prog_utils::get_cmd_line_string(&alevin_quant_cmd);
     info!("cmd : {:?}", alevin_quant_cmd);
     let input_files = vec![gpl_output.clone(), setup.t2g_map_file.clone()];

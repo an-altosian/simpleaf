@@ -37,6 +37,17 @@ pub mod min_versions {
 
     /// alevin-fry 0.18.0 provides deterministic compiled barcode-correction
     /// plans and the correction/resource controls forwarded by simpleaf 0.28.
+    ///
+    /// VERSION-FLOOR BLOCKER (do NOT merge without bumping): this branch defaults
+    /// `--umi-edit-dist 1` for the `cr-like`/`cr-like-em` resolutions (see
+    /// `simpleaf_commands::resolve_umi_edit_dist`) to mimic Cell Ranger's Hamming-1
+    /// UMI collapse. That requires an alevin-fry that implements edit-dist-1
+    /// collapse for the CR-faithful path (COMBINE-lab/alevin-fry PR #196); older
+    /// releases lack the flag entirely (they `bail!` on the unknown argument) or
+    /// reject edit-dist 1 for `cr-like`. The alevin-fry release containing #196
+    /// does not exist yet, so the floor is intentionally left at 0.18.0 for now.
+    /// BEFORE MERGE, bump this floor to that release AND update the alevin-fry pin
+    /// in `.github/workflows/test_simpleaf.yml` to match.
     pub const ALEVIN_FRY: &str = ">=0.18.0, <1.0.0";
 
     /// Only consulted when peak calling is actually requested.

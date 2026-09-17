@@ -530,6 +530,14 @@ pub fn multiplex_map_and_quant(af_home: &Path, mut opts: MultiplexQuantOpts) -> 
             .arg(small_thresh.to_string());
     }
 
+    // Cell Ranger-style UMI collapse: AUTO forwards `--umi-edit-dist 1` for
+    // cr-like/cr-like-em, nothing otherwise (see `resolve_umi_edit_dist`).
+    crate::simpleaf_commands::append_umi_edit_dist(
+        &mut quant_cmd,
+        &opts.resolution,
+        opts.umi_edit_dist,
+    );
+
     let quant_cmd_str = prog_utils::get_cmd_line_string(&quant_cmd);
     info!("quant cmd: {}", quant_cmd_str);
     let quant_start = Instant::now();

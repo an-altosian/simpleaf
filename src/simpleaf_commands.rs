@@ -447,6 +447,57 @@ impl GplResourceOpts {
     }
 }
 
+/// Resolve the `--umi-edit-dist` value to forward to `alevin-fry quant`, or
+/// `None` to forward nothing (leaving alevin-fry's own per-resolution default).
+///
+/// `umi_edit_dist` is the CLI option: `None` means AUTO, `Some(n)` an explicit
+/// override.
+///
+/// AUTO turns Cell Ranger-style Hamming-1 UMI collapse ON *only* for the
+/// Cell Ranger-faithful resolutions (`cr-like`, `cr-like-em`) by forwarding
+/// `--umi-edit-dist 1` — alevin-fry defaults these to `0` (no collapse), so this
+/// is what makes simpleaf's `cr-like` mimic Cell Ranger's Hamming-1 UMI merging.
+/// Every other resolution forwards nothing, leaving alevin-fry's default: its
+/// `trivial` resolution rejects edit-dist 1, and the `parsimony*` family already
+/// defaults the flag to `1` with a different (PUG) meaning, so defaulting `1`
+/// only where alevin-fry's CR-faithful correction applies avoids breaking them.
+/// (simpleaf's `--resolution` parser does not expose `trivial`, but keeping the
+/// AUTO default scoped to the two cr-like modes is the safe, explicit rule.)
+///
+/// An explicit value always wins and is forwarded verbatim, including `0` (the
+/// opt-out from the CR-style collapse) and any `N` for other resolutions.
+///
+/// VERSION FLOOR — BLOCKER: forwarding `--umi-edit-dist 1` for `cr-like` requires
+/// an alevin-fry that implements edit-dist-1 collapse for the CR-faithful path
+/// (COMBINE-lab/alevin-fry PR #196). Releases before that PR either lack the flag
+/// entirely (older af `bail!`s on the unknown argument) or reject edit-dist 1 for
+/// `cr-like`. BEFORE MERGE, `min_versions::ALEVIN_FRY` in `utils/prog_utils.rs`
+/// (and the alevin-fry pin in `.github/workflows/test_simpleaf.yml`) MUST be
+/// bumped to the first alevin-fry release containing #196.
+pub(crate) fn resolve_umi_edit_dist(resolution: &str, umi_edit_dist: Option<u32>) -> Option<u32> {
+    match umi_edit_dist {
+        // Explicit override (including the `0` opt-out) always wins.
+        Some(n) => Some(n),
+        // AUTO: default-on only for the Cell Ranger-faithful resolutions.
+        None => match resolution {
+            "cr-like" | "cr-like-em" => Some(1),
+            _ => None,
+        },
+    }
+}
+
+/// Append the resolved `--umi-edit-dist <N>` argument to an `alevin-fry quant`
+/// command, or nothing when [`resolve_umi_edit_dist`] returns `None`.
+pub(crate) fn append_umi_edit_dist(
+    command: &mut std::process::Command,
+    resolution: &str,
+    umi_edit_dist: Option<u32>,
+) {
+    if let Some(dist) = resolve_umi_edit_dist(resolution, umi_edit_dist) {
+        command.arg("--umi-edit-dist").arg(dist.to_string());
+    }
+}
+
 /// The type of references we might create
 /// to map against for quantification with
 /// alevin-fry.
@@ -666,6 +717,17 @@ pub struct MapQuantOpts {
     /// Left unset, alevin-fry's own default applies.
     #[arg(long, value_name = "N", help_heading = "UMI Resolution Options")]
     pub small_thresh: Option<usize>,
+
+    /// UMI edit distance (Hamming) for Cell Ranger-style UMI collapse, forwarded
+    /// to `alevin-fry quant --umi-edit-dist`.
+    ///
+    /// Left unset (AUTO), edit-distance-1 UMI collapse defaults ON for the
+    /// Cell Ranger-faithful resolutions (`cr-like`, `cr-like-em`) — mimicking
+    /// Cell Ranger's Hamming-1 UMI merging — and OFF for every other resolution,
+    /// where alevin-fry's own default stands. Pass `0` to opt out of the CR-style
+    /// collapse, or an explicit `N` to force that Hamming distance.
+    #[arg(long, value_name = "N", help_heading = "UMI Resolution Options")]
+    pub umi_edit_dist: Option<u32>,
 
     /// Generate an anndata (h5ad format) count matrix from the standard (matrix-market format)
     /// output.
@@ -1114,6 +1176,17 @@ pub struct MultiplexQuantOpts {
     #[arg(long, value_name = "N", help_heading = "Quantification Options")]
     pub small_thresh: Option<usize>,
 
+    /// UMI edit distance (Hamming) for Cell Ranger-style UMI collapse, forwarded
+    /// to `alevin-fry quant --umi-edit-dist`.
+    ///
+    /// Left unset (AUTO), edit-distance-1 UMI collapse defaults ON for the
+    /// Cell Ranger-faithful resolutions (`cr-like`, `cr-like-em`) — mimicking
+    /// Cell Ranger's Hamming-1 UMI merging — and OFF for every other resolution,
+    /// where alevin-fry's own default stands. Pass `0` to opt out of the CR-style
+    /// collapse, or an explicit `N` to force that Hamming distance.
+    #[arg(long, value_name = "N", help_heading = "Quantification Options")]
+    pub umi_edit_dist: Option<u32>,
+
     /// k-mer length for probe index building
     #[arg(long, default_value_t = 23, help_heading = "Probe Set Options")]
     pub kmer_length: usize,
@@ -1354,6 +1427,79 @@ mod barcode_forwarding_tests {
         CollationResourceOpts::default().append_to(&mut command);
         GplResourceOpts::default().append_to(&mut command);
         assert!(args_of(&command).is_empty());
+    }
+
+    /// The Cell Ranger-faithful resolutions (`cr-like`, `cr-like-em`) taken
+    /// verbatim from the `--resolution` parser.
+    const CR_LIKE_RESOLUTIONS: [&str; 2] = ["cr-like", "cr-like-em"];
+
+    /// Every non-CR resolution accepted by the `--resolution` parser; AUTO must
+    /// leave alevin-fry's own default for each of these.
+    const NON_CR_RESOLUTIONS: [&str; 4] = [
+        "parsimony",
+        "parsimony-em",
+        "parsimony-gene",
+        "parsimony-gene-em",
+    ];
+
+    fn umi_edit_dist_args(resolution: &str, umi_edit_dist: Option<u32>) -> Vec<String> {
+        let mut command = std::process::Command::new("alevin-fry");
+        append_umi_edit_dist(&mut command, resolution, umi_edit_dist);
+        args_of(&command)
+    }
+
+    #[test]
+    fn auto_umi_edit_dist_defaults_on_for_cr_like_resolutions() {
+        for resolution in CR_LIKE_RESOLUTIONS {
+            assert_eq!(
+                resolve_umi_edit_dist(resolution, None),
+                Some(1),
+                "{resolution}"
+            );
+            assert_eq!(
+                umi_edit_dist_args(resolution, None),
+                ["--umi-edit-dist", "1"],
+                "{resolution}"
+            );
+        }
+    }
+
+    #[test]
+    fn auto_umi_edit_dist_forwards_nothing_for_non_cr_resolutions() {
+        for resolution in NON_CR_RESOLUTIONS {
+            assert_eq!(
+                resolve_umi_edit_dist(resolution, None),
+                None,
+                "{resolution}"
+            );
+            assert!(
+                umi_edit_dist_args(resolution, None).is_empty(),
+                "{resolution} should leave alevin-fry's own default"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_umi_edit_dist_is_forwarded_verbatim() {
+        // `0` is the explicit opt-out from the CR-style collapse on cr-like.
+        assert_eq!(resolve_umi_edit_dist("cr-like", Some(0)), Some(0));
+        assert_eq!(
+            umi_edit_dist_args("cr-like", Some(0)),
+            ["--umi-edit-dist", "0"]
+        );
+
+        // An explicit distance forces that value on cr-like.
+        assert_eq!(
+            umi_edit_dist_args("cr-like", Some(2)),
+            ["--umi-edit-dist", "2"]
+        );
+
+        // Explicit always wins, even for a resolution where AUTO forwards nothing.
+        assert_eq!(resolve_umi_edit_dist("parsimony", Some(1)), Some(1));
+        assert_eq!(
+            umi_edit_dist_args("parsimony", Some(1)),
+            ["--umi-edit-dist", "1"]
+        );
     }
 
     #[test]
